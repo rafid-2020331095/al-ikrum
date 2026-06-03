@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx'
 
-export function parseExcelFile(file) {
+function readFileAsRows(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = (e) => {
@@ -19,6 +19,10 @@ export function parseExcelFile(file) {
     reader.readAsArrayBuffer(file)
   })
 }
+
+export function parseExcelFile(file) { return readFileAsRows(file) }
+export function parseMasterFile(file) { return readFileAsRows(file) }
+export function parseAttendanceFile(file) { return readFileAsRows(file) }
 
 export function getUniqueValues(rows, field) {
   const vals = [...new Set(rows.map(r => r[field]).filter(Boolean))]
