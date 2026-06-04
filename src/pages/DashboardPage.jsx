@@ -92,7 +92,6 @@ export default function DashboardPage() {
 
   const [filters, setFilters] = useState({
     Year: [],
-    CurrentPeriod: [],
     deptunit: [],
     Department: [],
     SubDeptName: [],
@@ -121,7 +120,6 @@ export default function DashboardPage() {
   const options = useMemo(
     () => ({
       Year: getUniqueValues(allRows, "Year"),
-      CurrentPeriod: getUniqueValues(allRows, "CurrentPeriod"),
       deptunit: getUniqueValues(allRows, "deptunit"),
       Department: getUniqueValues(allRows, "Department"),
       SubDeptName: getUniqueValues(allRows, "SubDeptName"),
@@ -141,7 +139,9 @@ export default function DashboardPage() {
     let rows = applyFilters(allRows, filters);
     if (selectedTrainers.length > 0)
       rows = rows.filter((r) =>
-        selectedTrainers.includes(String(r["Employee Name"] || "")),
+        selectedTrainers.some((t) =>
+          (r.Trainer || "").split(" / ").map((x) => x.trim()).includes(t),
+        ),
       );
     if (selectedTrnNames.length > 0)
       rows = rows.filter((r) =>
@@ -157,9 +157,10 @@ export default function DashboardPage() {
       filtered.map((r) => r["Employee Name"]).filter(Boolean),
     );
     const uniqueTrn = new Set(filtered.map((r) => r.TrnName).filter(Boolean));
-    const uniqueTrainers = new Set(
-      filtered.map((r) => r.Trainer).filter(Boolean),
-    );
+    const uniqueTrainers = new Set()
+    filtered.forEach((r) => {
+      if (r.Trainer) r.Trainer.split(" / ").forEach((t) => { if (t.trim()) uniqueTrainers.add(t.trim()) })
+    })
     const uniqueCats = new Set(
       filtered.map((r) => r.IranCategory).filter(Boolean),
     );
@@ -178,7 +179,7 @@ export default function DashboardPage() {
       uniqueExposure: uniqueNames.size,
       totalTrn: uniqueTrn.size,
       totalDays: Math.round(totalDays),
-      trainersInvolved: uniqueTrainers.size || uniqueNames.size,
+      trainersInvolved: uniqueTrainers.size,
       categories: uniqueCats.size,
     };
   }, [filtered]);
@@ -192,7 +193,7 @@ export default function DashboardPage() {
   const periodTable = useMemo(() => {
     const map = {};
     filtered.forEach((r) => {
-      const k = r.Period || r.CurrentPeriod;
+      const k = r.Period;
       if (k) map[k] = (map[k] || 0) + 1;
     });
     return Object.entries(map)
@@ -200,13 +201,15 @@ export default function DashboardPage() {
       .map(([p, c]) => ({ period: p, count: c }));
   }, [filtered]);
 
-  const allTrainerList = useMemo(
-    () =>
-      getUniqueValues(allRows, "Employee Name").filter((n) =>
-        n.toLowerCase().includes(trainerSearch.toLowerCase()),
-      ),
-    [allRows, trainerSearch],
-  );
+  const allTrainerList = useMemo(() => {
+    const trainerSet = new Set()
+    allRows.forEach((r) => {
+      if (r.Trainer) r.Trainer.split(" / ").forEach((t) => { if (t.trim()) trainerSet.add(t.trim()) })
+    })
+    return [...trainerSet]
+      .sort()
+      .filter((n) => n.toLowerCase().includes(trainerSearch.toLowerCase()))
+  }, [allRows, trainerSearch])
   const allTrnList = useMemo(
     () =>
       getUniqueValues(allRows, "TrnName").filter((n) =>
@@ -341,12 +344,6 @@ export default function DashboardPage() {
             options={options.Year}
             selected={filters.Year}
             onChange={(v) => setFilter("Year", v)}
-          />
-          <CheckboxFilter
-            title="CurrentPeriod"
-            options={options.CurrentPeriod}
-            selected={filters.CurrentPeriod}
-            onChange={(v) => setFilter("CurrentPeriod", v)}
           />
           <CheckboxFilter
             title="deptunit"

@@ -161,3 +161,11 @@ al-ikrum/
 
 ## Stopping the Server
 Press `Ctrl + C` in the terminal where `npm run dev` is running.
+
+
+git init
+git add .
+git commit -m "Initial commit — Supabase integration + training session form"
+git branch -M main
+git remote add origin https://github.com/yourname/al-ikrum-dashboard.git
+git push -u origin main

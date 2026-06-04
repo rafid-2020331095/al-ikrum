@@ -89,6 +89,7 @@ export function makeSessionId(trnName, date) {
 export function enrichSession(participants, sessionMeta, masterLookup) {
   const sessionId = makeSessionId(sessionMeta.TrnName, sessionMeta.Date)
   const hours = calcHours(sessionMeta.TimeFrom, sessionMeta.TimeTo)
+  const days = hours >= 4 ? 1 : (hours > 0 ? 0.5 : 1)
   const year = extractYear(sessionMeta.Date)
   const period = extractPeriod(sessionMeta.Date)
   const dateStr = formatDate(sessionMeta.Date)
@@ -107,18 +108,17 @@ export function enrichSession(participants, sessionMeta, masterLookup) {
       'Employee Name': p.EmployeeName || p.Name || (master ? master.Name : ''),
       TrnName: sessionMeta.TrnName,
       Hours: hours,
-      Days: 1,
+      Days: days,
       'Date From': dateStr,
       'Date To': dateStr,
       TimeFrom: sessionMeta.TimeFrom,
       TimeTo: sessionMeta.TimeTo,
       Department: master ? master.Department : '',
-      SubDeptName: master ? master.Department : '',
+      SubDeptName: master ? (master.SubDeptName || master['Sub Dept Name'] || master['SubDept'] || master.Department || '') : '',
       Division: master ? master.Unit : '',
       deptunit: master ? master.Unit : '',
       Year: year,
       Period: period,
-      CurrentPeriod: period,
       IranCategory: sessionMeta.IranCategory,
       FacultyType: sessionMeta.FacultyType,
       TrainingType: sessionMeta.TrainingType,

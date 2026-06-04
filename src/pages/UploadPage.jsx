@@ -372,7 +372,7 @@ export default function UploadPage() {
     if (exists) {
       setSessionStatus("warn");
       setSessionMsg(
-        `This session already exists (${sessionFormMeta.TrnName} · ${sessionFormMeta.Date}). Clear sessions first to re-upload.`,
+        `A session with this name already exists on ${sessionFormMeta.Date}. If this is a different group/batch, add "(Batch 2)" or similar to the Training Name to distinguish it.`,
       );
       return;
     }
