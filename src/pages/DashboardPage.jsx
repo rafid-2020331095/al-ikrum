@@ -151,8 +151,22 @@ export default function DashboardPage() {
   }, [allRows, filters, selectedTrainers, selectedTrnNames]);
 
   const kpis = useMemo(() => {
-    const totalHours = filtered.reduce((s, r) => s + (Number(r.Hours) || 0), 0);
-    const totalDays = filtered.reduce((s, r) => s + (Number(r.Days) || 0), 0);
+    const uniqueSessions = new Map();
+    filtered.forEach((r) => {
+      const sId = r._sessionId || `${String(r.TrnName).trim()}__${r['Date From'] || r.Date || ''}`;
+      if (!uniqueSessions.has(sId)) {
+        uniqueSessions.set(sId, {
+          Hours: Number(r.Hours) || 0,
+          Days: Number(r.Days) || 0,
+        });
+      }
+    });
+    let totalHours = 0;
+    let totalDays = 0;
+    uniqueSessions.forEach((s) => {
+      totalHours += s.Hours;
+      totalDays += s.Days;
+    });
     const uniqueNames = new Set(
       filtered.map((r) => r["Employee Name"]).filter(Boolean),
     );

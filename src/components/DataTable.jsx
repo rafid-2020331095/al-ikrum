@@ -13,8 +13,22 @@ export default function DataTable({ rows }) {
     )
   }
 
-  const totalHours = rows.reduce((s, r) => s + (Number(r.Hours) || 0), 0)
-  const totalDays = rows.reduce((s, r) => s + (Number(r.Days) || 0), 0)
+  const uniqueSessions = new Map()
+  rows.forEach(r => {
+    const sId = r._sessionId || `${String(r.TrnName).trim()}__${r['Date From'] || r.Date || ''}`
+    if (!uniqueSessions.has(sId)) {
+      uniqueSessions.set(sId, {
+        Hours: Number(r.Hours) || 0,
+        Days: Number(r.Days) || 0
+      })
+    }
+  })
+  let totalHours = 0
+  let totalDays = 0
+  uniqueSessions.forEach(s => {
+    totalHours += s.Hours
+    totalDays += s.Days
+  })
 
   return (
     <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 320 }}>
