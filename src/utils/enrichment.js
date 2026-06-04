@@ -67,6 +67,16 @@ export function deriveFacultyType(trainerOrg) {
   return 'External'
 }
 
+export function deriveFacultyTypeFromTrainers(trainers) {
+  const filled = trainers.filter(t => t.org && t.org.trim())
+  if (filled.length === 0) return 'Internal'
+  const hasInternal = filled.some(t => t.org.toLowerCase().includes('akij'))
+  const hasExternal = filled.some(t => !t.org.toLowerCase().includes('akij'))
+  if (hasInternal && hasExternal) return 'Mixed'
+  if (hasExternal) return 'External'
+  return 'Internal'
+}
+
 // ── Session ID ────────────────────────────────────────────────────────────────
 
 export function makeSessionId(trnName, date) {

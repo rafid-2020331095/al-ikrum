@@ -38,16 +38,8 @@ const participants = [
   { SN: 20, EnrollNo: '529517', EmployeeName: 'Rasel Rana', Designation: 'Executive' },
 ]
 
-// Build flat rows: session fields repeated per participant
+// Participant-only rows — session details are entered via the upload form
 const rows = participants.map(p => ({
-  TrnName: session.TrnName,
-  Date: session.Date,
-  Venue: session.Venue,
-  TimeFrom: session.TimeFrom,
-  TimeTo: session.TimeTo,
-  Trainer: session.Trainer,
-  TrainerDesignation: session.TrainerDesignation,
-  TrainerOrg: session.TrainerOrg,
   SN: p.SN,
   EnrollNo: p.EnrollNo,
   EmployeeName: p.EmployeeName,
@@ -59,24 +51,14 @@ const ws = XLSX.utils.json_to_sheet(rows)
 
 // Column widths
 ws['!cols'] = [
-  { wch: 40 }, // TrnName
-  { wch: 14 }, // Date
-  { wch: 14 }, // Venue
-  { wch: 12 }, // TimeFrom
-  { wch: 12 }, // TimeTo
-  { wch: 22 }, // Trainer
-  { wch: 22 }, // TrainerDesignation
-  { wch: 22 }, // TrainerOrg
-  { wch: 6 }, // SN
+  { wch: 6 },  // SN
   { wch: 12 }, // EnrollNo
-  { wch: 28 }, // EmployeeName
-  { wch: 22 }, // Designation
+  { wch: 30 }, // EmployeeName
+  { wch: 24 }, // Designation
 ]
 
 XLSX.utils.book_append_sheet(wb, ws, 'Attendance')
 XLSX.writeFile(wb, 'demo-attendance-session.xlsx')
 console.log('✅ demo-attendance-session.xlsx created with', rows.length, 'participants')
 console.log('   Session:', session.TrnName)
-console.log('   Date:', session.Date, '|', session.TimeFrom, '→', session.TimeTo)
-console.log('')
-console.log('NOTE: Enroll 999001 is intentionally not in master data to demo the unmatched warning.')
+console.log('   (Session details will be entered via form on upload)')

@@ -64,17 +64,9 @@ const participants3 = [
   { SN: 13, EnrollNo: '529517', EmployeeName: 'Rasel Rana', Designation: 'Executive' },
 ]
 
-// ── Builder ───────────────────────────────────────────────────────────────────
+// ── Builder — participant-only rows, session details entered via upload form ──
 function buildSheet(session, participants) {
   const rows = participants.map(p => ({
-    TrnName: session.TrnName,
-    Date: session.Date,
-    Venue: session.Venue,
-    TimeFrom: session.TimeFrom,
-    TimeTo: session.TimeTo,
-    Trainer: session.Trainer,
-    TrainerDesignation: session.TrainerDesignation,
-    TrainerOrg: session.TrainerOrg,
     SN: p.SN,
     EnrollNo: p.EnrollNo,
     EmployeeName: p.EmployeeName,
@@ -82,9 +74,7 @@ function buildSheet(session, participants) {
   }))
   const ws = XLSX.utils.json_to_sheet(rows)
   ws['!cols'] = [
-    { wch: 40 }, { wch: 14 }, { wch: 20 }, { wch: 12 }, { wch: 12 },
-    { wch: 26 }, { wch: 30 }, { wch: 26 }, { wch: 5 },
-    { wch: 12 }, { wch: 28 }, { wch: 24 },
+    { wch: 6 }, { wch: 12 }, { wch: 30 }, { wch: 24 },
   ]
   return ws
 }
@@ -94,15 +84,12 @@ const wb2 = XLSX.utils.book_new()
 XLSX.utils.book_append_sheet(wb2, buildSheet(session2, participants2), 'Attendance')
 XLSX.writeFile(wb2, 'demo-session-2-leadership.xlsx')
 console.log('✅ demo-session-2-leadership.xlsx created')
-console.log(`   ${session2.TrnName} | ${session2.Date} | ${participants2.length} participants`)
-console.log(`   Trainer: ${session2.Trainer} (${session2.TrainerOrg}) → FacultyType: Internal`)
+console.log(`   ${participants2.length} participants | Enter session details via form on upload`)
 
 // ── Write Session 3 ───────────────────────────────────────────────────────────
 const wb3 = XLSX.utils.book_new()
 XLSX.utils.book_append_sheet(wb3, buildSheet(session3, participants3), 'Attendance')
 XLSX.writeFile(wb3, 'demo-session-3-it-digital.xlsx')
 console.log('\n✅ demo-session-3-it-digital.xlsx created')
-console.log(`   ${session3.TrnName} | ${session3.Date} | ${participants3.length} participants`)
-console.log(`   Trainer: ${session3.Trainer} (${session3.TrainerOrg}) → FacultyType: External (auto-detected)`)
-console.log(`   NOTE: EnrollNo 999002 is not in master data — tests the unmatched warning.`)
+console.log(`   ${participants3.length} participants | Enter session details via form on upload`)
 console.log('\nDone. Upload all 3 demo files one by one via the Training Session tab.')

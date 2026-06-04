@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { loadData, loadMeta } from "../utils/storage";
 import { getUniqueValues, applyFilters } from "../utils/excelParser";
@@ -76,8 +76,19 @@ function groupBySum(rows, field, sumField) {
 
 export default function DashboardPage() {
   const navigate = useNavigate();
-  const allRows = useMemo(() => loadData(), []);
-  const meta = loadMeta();
+  const [allRows, setAllRows] = useState([]);
+  const [meta, setMeta] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchData() {
+      const [rows, m] = await Promise.all([loadData(), loadMeta()]);
+      setAllRows(rows);
+      setMeta(m);
+      setLoading(false);
+    }
+    fetchData();
+  }, []);
 
   const [filters, setFilters] = useState({
     Year: [],
@@ -217,6 +228,15 @@ export default function DashboardPage() {
   }, [filtered]);
   const totalPlatform = platformStats.reduce((s, r) => s + r.count, 0);
 
+  if (loading)
+    return (
+      <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#0d1117", flexDirection: "column", gap: 12 }}>
+        <div style={{ width: 28, height: 28, border: "3px solid #4f8ef7", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+        <p style={{ color: "#5a6a8a", fontSize: 13 }}>Loading dashboard…</p>
+        <style>{"@keyframes spin { to { transform: rotate(360deg); } }"}</style>
+      </div>
+    );
+
   if (allRows.length === 0)
     return (
       <div
@@ -244,7 +264,7 @@ export default function DashboardPage() {
             cursor: "pointer",
           }}
         >
-          Upload Excel to Get Started
+          Upload Session to Get Started
         </button>
       </div>
     );
@@ -280,8 +300,7 @@ export default function DashboardPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           {meta && (
             <span style={{ color: "#4a5a7a", fontSize: 10 }}>
-              Last updated: {new Date(meta.uploadedAt).toLocaleString()} &mdash;{" "}
-              {meta.rowCount} rows
+              {meta.sessionCount} session(s) &mdash; {meta.totalRows} rows
             </span>
           )}
           <button

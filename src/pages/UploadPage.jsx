@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { parseMasterFile, parseAttendanceFile } from "../utils/excelParser";
 import {
@@ -12,9 +12,8 @@ import {
 } from "../utils/storage";
 import {
   enrichSession,
-  extractSessionHeader,
   extractParticipants,
-  deriveFacultyType,
+  deriveFacultyTypeFromTrainers,
 } from "../utils/enrichment";
 import {
   UploadCloud,
@@ -189,6 +188,35 @@ function Select({ label, value, onChange, options }) {
   );
 }
 
+function TextInput({ label, value, onChange, placeholder, type = "text" }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      {label && (
+        <label style={{ fontSize: 11, color: dark.textDim, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+          {label}
+        </label>
+      )}
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder || ""}
+        style={{
+          background: dark.input,
+          border: `1px solid ${dark.border}`,
+          color: dark.textBr,
+          borderRadius: 6,
+          padding: "7px 10px",
+          fontSize: 13,
+          outline: "none",
+          width: "100%",
+          boxSizing: "border-box",
+        }}
+      />
+    </div>
+  );
+}
+
 function InfoRow({ label, value }) {
   return (
     <div
@@ -214,13 +242,21 @@ export default function UploadPage() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("master");
 
+  const [masterMeta, setMasterMeta] = useState(null);
   const [masterStatus, setMasterStatus] = useState(null);
   const [masterMsg, setMasterMsg] = useState("");
-  const masterMeta = loadMasterMeta();
 
+  const [sessionsMeta, setSessionsMeta] = useState(null);
   const [sessionStep, setSessionStep] = useState(1);
   const [parsed, setParsed] = useState(null);
-  const [meta, setMeta] = useState({
+  const [masterLookup, setMasterLookup] = useState({});
+  const [sessionFormMeta, setSessionFormMeta] = useState({
+    TrnName: "",
+    Date: "",
+    Venue: "",
+    TimeFrom: "",
+    TimeTo: "",
+    trainers: [{ name: "", designation: "", org: "" }],
     IranCategory: "",
     TrainingType: "Internal",
     Platform: "Classroom",
@@ -229,7 +265,15 @@ export default function UploadPage() {
   });
   const [sessionStatus, setSessionStatus] = useState(null);
   const [sessionMsg, setSessionMsg] = useState("");
-  const sessionsMeta = loadSessionsMeta();
+
+  useEffect(() => {
+    async function init() {
+      const [mm, sm] = await Promise.all([loadMasterMeta(), loadSessionsMeta()]);
+      setMasterMeta(mm);
+      setSessionsMeta(sm);
+    }
+    init();
+  }, []);
 
   async function handleMasterFile(file) {
     if (!file.name.match(/\.(xlsx|xls|csv)$/i)) {
@@ -246,13 +290,15 @@ export default function UploadPage() {
         setMasterMsg("File is empty.");
         return;
       }
-      saveMasterData(rows)
-        ? (setMasterStatus("success"),
-          setMasterMsg(
-            `${rows.length} employee records loaded from "${file.name}"`,
-          ))
-        : (setMasterStatus("error"),
-          setMasterMsg("Failed to save — file may be too large."));
+      const ok = await saveMasterData(rows);
+      if (ok) {
+        setMasterStatus("success");
+        setMasterMsg(`${rows.length} employee records saved to database from "${file.name}"`);
+        setMasterMeta(await loadMasterMeta());
+      } else {
+        setMasterStatus("error");
+        setMasterMsg("Failed to save. Check Supabase connection and table permissions.");
+      }
     } catch (err) {
       setMasterStatus("error");
       setMasterMsg(`Error: ${err.message}`);
@@ -274,15 +320,7 @@ export default function UploadPage() {
         setSessionMsg("File appears to be empty.");
         return;
       }
-      const header = extractSessionHeader(rows);
       const participants = extractParticipants(rows);
-      if (!header.TrnName) {
-        setSessionStatus("error");
-        setSessionMsg(
-          'Could not detect training name. Ensure the Excel has a "TrnName" column.',
-        );
-        return;
-      }
       if (participants.length === 0) {
         setSessionStatus("error");
         setSessionMsg(
@@ -290,13 +328,9 @@ export default function UploadPage() {
         );
         return;
       }
-      setParsed({ header, participants });
-      const autoFaculty = deriveFacultyType(header.TrainerOrg);
-      setMeta((prev) => ({
-        ...prev,
-        FacultyType: autoFaculty,
-        TrainingType: autoFaculty === "Internal" ? "Internal" : "External",
-      }));
+      const lookup = await loadMasterLookup();
+      setMasterLookup(lookup);
+      setParsed({ participants });
       setSessionStatus(null);
       setSessionMsg("");
       setSessionStep(2);
@@ -306,39 +340,88 @@ export default function UploadPage() {
     }
   }
 
-  function confirmSession() {
-    if (!meta.IranCategory) {
-      setSessionStatus("error");
-      setSessionMsg("Please select a Training Category.");
-      return;
-    }
-    const masterLookup = loadMasterLookup();
+  async function confirmSession() {
+    const filledTrainers = sessionFormMeta.trainers.filter((t) => t.name.trim());
+    if (!sessionFormMeta.TrnName.trim()) { setSessionStatus("error"); setSessionMsg("Training Name is required."); return; }
+    if (!sessionFormMeta.Date) { setSessionStatus("error"); setSessionMsg("Date is required."); return; }
+    if (filledTrainers.length === 0) { setSessionStatus("error"); setSessionMsg("At least one trainer name is required."); return; }
+    if (!sessionFormMeta.IranCategory) { setSessionStatus("error"); setSessionMsg("Please select a Training Category."); return; }
+    setSessionStatus("loading");
+    setSessionMsg("Saving to database…");
+    const combinedMeta = {
+      TrnName: sessionFormMeta.TrnName,
+      Date: sessionFormMeta.Date,
+      Venue: sessionFormMeta.Venue,
+      TimeFrom: sessionFormMeta.TimeFrom,
+      TimeTo: sessionFormMeta.TimeTo,
+      Trainer: filledTrainers.map((t) => t.name).join(" / "),
+      TrainerDesignation: filledTrainers.map((t) => t.designation).join(" / "),
+      TrainerOrg: filledTrainers.map((t) => t.org).join(" / "),
+      IranCategory: sessionFormMeta.IranCategory,
+      TrainingType: sessionFormMeta.TrainingType,
+      Platform: sessionFormMeta.Platform,
+      Media: sessionFormMeta.Media,
+      FacultyType: sessionFormMeta.FacultyType,
+    };
     const { rows, sessionId } = enrichSession(
       parsed.participants,
-      { ...parsed.header, ...meta },
+      combinedMeta,
       masterLookup,
     );
-    if (sessionExists(sessionId)) {
+    const exists = await sessionExists(sessionId);
+    if (exists) {
       setSessionStatus("warn");
       setSessionMsg(
-        `This session already exists (${parsed.header.TrnName} · ${parsed.header.Date}). To re-upload, clear sessions first.`,
+        `This session already exists (${sessionFormMeta.TrnName} · ${sessionFormMeta.Date}). Clear sessions first to re-upload.`,
       );
       return;
     }
-    addSession(rows)
-      ? (setSessionStatus("success"),
-        setSessionMsg(
-          `Session saved! ${rows.length} participant records added to dashboard.`,
-        ))
-      : (setSessionStatus("error"),
-        setSessionMsg("Failed to save session. Storage may be full."));
+    const ok = await addSession(rows);
+    if (ok) {
+      setSessionStatus("success");
+      setSessionMsg(`Session saved! ${rows.length} participant records added to dashboard.`);
+      setSessionsMeta(await loadSessionsMeta());
+    } else {
+      setSessionStatus("error");
+      setSessionMsg("Failed to save session. Check Supabase connection.");
+    }
   }
+
+  const EMPTY_FORM = {
+    TrnName: "", Date: "", Venue: "", TimeFrom: "", TimeTo: "",
+    trainers: [{ name: "", designation: "", org: "" }],
+    IranCategory: "", TrainingType: "Internal", Platform: "Classroom", Media: "Classroom", FacultyType: "Internal",
+  };
 
   function resetSession() {
     setSessionStep(1);
     setParsed(null);
     setSessionStatus(null);
     setSessionMsg("");
+    setMasterLookup({});
+    setSessionFormMeta(EMPTY_FORM);
+  }
+
+  function addTrainer() {
+    setSessionFormMeta((p) => ({ ...p, trainers: [...p.trainers, { name: "", designation: "", org: "" }] }));
+  }
+
+  function removeTrainer(idx) {
+    setSessionFormMeta((p) => ({ ...p, trainers: p.trainers.filter((_, i) => i !== idx) }));
+  }
+
+  function updateTrainer(idx, field, value) {
+    setSessionFormMeta((p) => {
+      const trainers = p.trainers.map((t, i) => (i === idx ? { ...t, [field]: value } : t));
+      const autoFaculty = field === "org" ? deriveFacultyTypeFromTrainers(trainers) : p.FacultyType;
+      return { ...p, trainers, FacultyType: autoFaculty };
+    });
+  }
+
+  async function handleClearSessions() {
+    if (!window.confirm("Clear ALL session data from the database? This cannot be undone.")) return;
+    await clearAllSessions();
+    setSessionsMeta(null);
   }
 
   const tabStyle = (active) => ({
@@ -507,10 +590,7 @@ export default function UploadPage() {
                     {sessionsMeta.totalRows} total rows
                   </span>
                   <button
-                    onClick={() =>
-                      window.confirm("Clear ALL session data?") &&
-                      clearAllSessions()
-                    }
+                    onClick={handleClearSessions}
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -593,50 +673,100 @@ export default function UploadPage() {
                 <ChevronLeft size={14} /> Back
               </button>
 
-              <div
-                style={{
-                  background: dark.input,
-                  border: `1px solid ${dark.border}`,
-                  borderRadius: 8,
-                  padding: "14px 16px",
-                  marginBottom: 16,
-                }}
-              >
-                <p
-                  style={{
-                    color: dark.accent,
-                    fontSize: 11,
-                    fontWeight: 700,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                    marginBottom: 10,
-                  }}
-                >
-                  Detected Session
-                </p>
-                <InfoRow label="Training Name" value={parsed.header.TrnName} />
-                <InfoRow label="Date" value={String(parsed.header.Date)} />
-                <InfoRow label="Venue" value={parsed.header.Venue} />
-                <InfoRow
-                  label="Time"
-                  value={
-                    parsed.header.TimeFrom && parsed.header.TimeTo
-                      ? `${parsed.header.TimeFrom} → ${parsed.header.TimeTo}`
-                      : ""
-                  }
+              <div style={{ marginBottom: 14, padding: "8px 12px", background: dark.input, border: `1px solid ${dark.border}`, borderRadius: 6 }}>
+                <span style={{ fontSize: 12, color: dark.textDim }}>
+                  {parsed.participants.length} participants loaded from file
+                </span>
+              </div>
+
+              <p style={{ color: dark.accent, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>Session Details</p>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <TextInput
+                    label="Training Name *"
+                    value={sessionFormMeta.TrnName}
+                    onChange={(v) => setSessionFormMeta((p) => ({ ...p, TrnName: v }))}
+                    placeholder="e.g. Communication Skills at Workplace"
+                  />
+                </div>
+                <TextInput
+                  label="Date *"
+                  value={sessionFormMeta.Date}
+                  onChange={(v) => setSessionFormMeta((p) => ({ ...p, Date: v }))}
+                  type="date"
                 />
-                <InfoRow label="Trainer" value={parsed.header.Trainer} />
-                <InfoRow label="Trainer Org" value={parsed.header.TrainerOrg} />
-                <InfoRow
-                  label="Participants"
-                  value={`${parsed.participants.length}`}
+                <TextInput
+                  label="Venue"
+                  value={sessionFormMeta.Venue}
+                  onChange={(v) => setSessionFormMeta((p) => ({ ...p, Venue: v }))}
+                  placeholder="e.g. Akij House, Conference Room"
+                />
+                <TextInput
+                  label="Time From"
+                  value={sessionFormMeta.TimeFrom}
+                  onChange={(v) => setSessionFormMeta((p) => ({ ...p, TimeFrom: v }))}
+                  type="time"
+                />
+                <TextInput
+                  label="Time To"
+                  value={sessionFormMeta.TimeTo}
+                  onChange={(v) => setSessionFormMeta((p) => ({ ...p, TimeTo: v }))}
+                  type="time"
                 />
               </div>
 
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <label style={{ fontSize: 11, color: dark.textDim, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>Trainers *</label>
+                  <button onClick={addTrainer} style={{ fontSize: 11, color: dark.accent, background: "none", border: `1px solid ${dark.border}`, borderRadius: 4, padding: "3px 10px", cursor: "pointer" }}>
+                    + Add Trainer
+                  </button>
+                </div>
+                {sessionFormMeta.trainers.map((t, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: sessionFormMeta.trainers.length > 1 ? "1fr 1fr 1fr auto" : "1fr 1fr 1fr",
+                      gap: 8,
+                      marginBottom: 8,
+                      alignItems: "end",
+                    }}
+                  >
+                    <TextInput
+                      label={idx === 0 ? "Name" : ""}
+                      value={t.name}
+                      onChange={(v) => updateTrainer(idx, "name", v)}
+                      placeholder="Trainer name"
+                    />
+                    <TextInput
+                      label={idx === 0 ? "Designation" : ""}
+                      value={t.designation}
+                      onChange={(v) => updateTrainer(idx, "designation", v)}
+                      placeholder="e.g. Senior Manager"
+                    />
+                    <TextInput
+                      label={idx === 0 ? "Organization" : ""}
+                      value={t.org}
+                      onChange={(v) => updateTrainer(idx, "org", v)}
+                      placeholder="e.g. Akij Food & Beverage"
+                    />
+                    {sessionFormMeta.trainers.length > 1 && (
+                      <button
+                        onClick={() => removeTrainer(idx)}
+                        style={{ background: "none", border: "none", color: dark.error, cursor: "pointer", fontSize: 20, lineHeight: 1, paddingBottom: 2 }}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
               {(() => {
-                const ml = loadMasterLookup();
                 const matched = parsed.participants.filter(
-                  (p) => ml[String(p.EnrollNo).trim()],
+                  (p) => masterLookup[String(p.EnrollNo).trim()],
                 ).length;
                 const miss = parsed.participants.length - matched;
                 return (
@@ -673,33 +803,33 @@ export default function UploadPage() {
               >
                 <Select
                   label="Training Category *"
-                  value={meta.IranCategory}
-                  onChange={(v) => setMeta((p) => ({ ...p, IranCategory: v }))}
+                  value={sessionFormMeta.IranCategory}
+                  onChange={(v) => setSessionFormMeta((p) => ({ ...p, IranCategory: v }))}
                   options={IRAN_CATS}
                 />
                 <Select
                   label="Training Type"
-                  value={meta.TrainingType}
-                  onChange={(v) => setMeta((p) => ({ ...p, TrainingType: v }))}
+                  value={sessionFormMeta.TrainingType}
+                  onChange={(v) => setSessionFormMeta((p) => ({ ...p, TrainingType: v }))}
                   options={TRN_TYPES}
                 />
                 <Select
                   label="Platform"
-                  value={meta.Platform}
-                  onChange={(v) => setMeta((p) => ({ ...p, Platform: v }))}
+                  value={sessionFormMeta.Platform}
+                  onChange={(v) => setSessionFormMeta((p) => ({ ...p, Platform: v }))}
                   options={PLATFORMS}
                 />
                 <Select
                   label="Media"
-                  value={meta.Media}
-                  onChange={(v) => setMeta((p) => ({ ...p, Media: v }))}
+                  value={sessionFormMeta.Media}
+                  onChange={(v) => setSessionFormMeta((p) => ({ ...p, Media: v }))}
                   options={MEDIA_OPTS}
                 />
                 <div style={{ gridColumn: "1 / -1" }}>
                   <Select
                     label="Faculty Type (auto-detected — override if needed)"
-                    value={meta.FacultyType}
-                    onChange={(v) => setMeta((p) => ({ ...p, FacultyType: v }))}
+                    value={sessionFormMeta.FacultyType}
+                    onChange={(v) => setSessionFormMeta((p) => ({ ...p, FacultyType: v }))}
                     options={FACULTY_TPS}
                   />
                 </div>
@@ -709,7 +839,7 @@ export default function UploadPage() {
                 <StatusMsg type={sessionStatus} text={sessionMsg} />
               )}
 
-              {sessionStatus !== "success" && (
+              {sessionStatus !== "success" && sessionStatus !== "loading" && (
                 <button
                   onClick={confirmSession}
                   style={{

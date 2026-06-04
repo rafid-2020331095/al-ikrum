@@ -1,2 +1,13 @@
 # Dependency directories
 node_modules/
+
+# Environment variables (contains Supabase keys — never commit)
+.env
+.env.local
+.env.*.local
+
+# Build output
+dist/
+
+# Vite cache
+.vite/
