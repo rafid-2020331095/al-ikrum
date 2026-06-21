@@ -1,5 +1,3 @@
-import { supabase } from './supabase.js'
-
 // ── Master Employee Data ──────────────────────────────────────────────────────
 // Stored as a single JSONB row (id = 1) in the `master_data` table
 
@@ -10,29 +8,33 @@ export async function saveMasterData(rows) {
       const enroll = String(r.Enroll || r.EnrollNo || r['Enroll No'] || '').trim()
       if (enroll) lookup[enroll] = r
     })
-    const { error } = await supabase
-      .from('master_data')
-      .upsert({ id: 1, lookup, row_count: rows.length, uploaded_at: new Date().toISOString() })
-    if (error) { console.error('saveMasterData:', error); return false }
-    return true
+    
+    const res = await fetch('/api/master', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lookup, row_count: rows.length, uploaded_at: new Date().toISOString() })
+    });
+    if (!res.ok) { console.error('saveMasterData failed'); return false; }
+    return true;
   } catch (e) { console.error('saveMasterData:', e); return false }
 }
 
 export async function loadMasterLookup() {
   try {
-    const { data, error } = await supabase
-      .from('master_data').select('lookup').eq('id', 1).maybeSingle()
-    if (error || !data) return {}
-    return data.lookup || {}
+    const res = await fetch('/api/master?action=lookup');
+    if (!res.ok) return {};
+    const data = await res.json();
+    return data.lookup || {};
   } catch { return {} }
 }
 
 export async function loadMasterMeta() {
   try {
-    const { data, error } = await supabase
-      .from('master_data').select('row_count, uploaded_at').eq('id', 1).maybeSingle()
-    if (error || !data) return null
-    return { rowCount: data.row_count, uploadedAt: data.uploaded_at }
+    const res = await fetch('/api/master?action=meta');
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data || !data.row_count) return null;
+    return { rowCount: data.row_count, uploadedAt: data.uploaded_at };
   } catch { return null }
 }
 
@@ -42,26 +44,31 @@ export async function loadMasterMeta() {
 export async function addSession(enrichedRows) {
   try {
     const records = enrichedRows.map(r => ({ session_id: r._sessionId || '', row_data: r }))
-    const { error } = await supabase.from('training_sessions').insert(records)
-    if (error) { console.error('addSession:', error); return false }
-    return true
+    const res = await fetch('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ records })
+    });
+    if (!res.ok) { console.error('addSession failed'); return false; }
+    return true;
   } catch (e) { console.error('addSession:', e); return false }
 }
 
 export async function loadAllSessions() {
   try {
-    const { data, error } = await supabase
-      .from('training_sessions').select('row_data').order('created_at', { ascending: true })
-    if (error || !data) return []
-    return data.map(r => r.row_data)
+    const res = await fetch('/api/sessions?action=all');
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data;
   } catch { return [] }
 }
 
 export async function loadSessionsMeta() {
   try {
-    const { data, error } = await supabase
-      .from('training_sessions').select('session_id, created_at')
-    if (error || !data || data.length === 0) return null
+    const res = await fetch('/api/sessions?action=meta');
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data || data.length === 0) return null;
     const sessionIds = new Set(data.map(r => r.session_id))
     return {
       lastUploadedAt: data[data.length - 1].created_at,
@@ -73,22 +80,23 @@ export async function loadSessionsMeta() {
 
 export async function sessionExists(sessionId) {
   try {
-    const { data, error } = await supabase
-      .from('training_sessions').select('id').eq('session_id', sessionId).limit(1)
-    return !error && data && data.length > 0
+    const res = await fetch(`/api/sessions?action=exists&sessionId=${encodeURIComponent(sessionId)}`);
+    if (!res.ok) return false;
+    const data = await res.json();
+    return !!data.exists;
   } catch { return false }
 }
 
 export async function clearAllSessions() {
   try {
-    const { error } = await supabase.from('training_sessions').delete().gt('id', 0)
-    return !error
+    const res = await fetch('/api/sessions', { method: 'DELETE' });
+    return res.ok;
   } catch { return false }
 }
 
 export async function clearAllData() {
-  await supabase.from('master_data').delete().eq('id', 1)
-  await supabase.from('training_sessions').delete().gt('id', 0)
+  await fetch('/api/master', { method: 'DELETE' });
+  await fetch('/api/sessions', { method: 'DELETE' });
 }
 
 // ── Backward-compat aliases (used by DashboardPage) ──────────────────────────

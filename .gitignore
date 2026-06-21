@@ -11,3 +11,5 @@ dist/
 
 # Vite cache
 .vite/
+.vercel
+.env*

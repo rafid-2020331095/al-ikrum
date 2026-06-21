@@ -297,7 +297,7 @@ export default function UploadPage() {
         setMasterMeta(await loadMasterMeta());
       } else {
         setMasterStatus("error");
-        setMasterMsg("Failed to save. Check Supabase connection and table permissions.");
+        setMasterMsg("Failed to save. Check database connection and table permissions.");
       }
     } catch (err) {
       setMasterStatus("error");
@@ -383,7 +383,7 @@ export default function UploadPage() {
       setSessionsMeta(await loadSessionsMeta());
     } else {
       setSessionStatus("error");
-      setSessionMsg("Failed to save session. Check Supabase connection.");
+      setSessionMsg("Failed to save session. Check database connection.");
     }
   }
 
