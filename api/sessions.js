@@ -4,6 +4,7 @@ export default async function handler(req, res) {
   const sql = neon(process.env.DATABASE_URL);
 
   if (req.method === 'GET') {
+    res.setHeader('Cache-Control', 'no-store');
     const { action, sessionId } = req.query;
     try {
       if (action === 'all') {

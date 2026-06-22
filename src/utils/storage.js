@@ -1,6 +1,28 @@
-// ── Master Employee Data ──────────────────────────────────────────────────────
-// Stored as a single JSONB row (id = 1) in the `master_data` table
+// ── Retry helper for Neon cold starts ─────────────────────────────────────────
+async function fetchWithRetry(url, options = {}, retries = 2, delayMs = 2000) {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const res = await fetch(url, options);
+      if (!res.ok) return res;
+      const data = await res.json();
+      // If we got a non-empty result, return it immediately
+      const isEmpty = Array.isArray(data)
+        ? data.length === 0
+        : !data || Object.keys(data).length === 0;
+      if (!isEmpty || i === retries) {
+        // Return a fake Response-like object with the data
+        return { ok: true, _data: data, json: async () => data };
+      }
+      // Empty result — Neon might still be waking up, wait and retry
+      await new Promise(r => setTimeout(r, delayMs));
+    } catch (e) {
+      if (i === retries) throw e;
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+  }
+}
 
+// ── Master Employee Data ──────────────────────────────────────────────────────
 export async function saveMasterData(rows) {
   try {
     const lookup = {}
@@ -8,7 +30,6 @@ export async function saveMasterData(rows) {
       const enroll = String(r.Enroll || r.EnrollNo || r['Enroll No'] || '').trim()
       if (enroll) lookup[enroll] = r
     })
-    
     const res = await fetch('/api/master', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -21,7 +42,7 @@ export async function saveMasterData(rows) {
 
 export async function loadMasterLookup() {
   try {
-    const res = await fetch('/api/master?action=lookup');
+    const res = await fetchWithRetry('/api/master?action=lookup');
     if (!res.ok) return {};
     const data = await res.json();
     return data.lookup || {};
@@ -30,7 +51,7 @@ export async function loadMasterLookup() {
 
 export async function loadMasterMeta() {
   try {
-    const res = await fetch('/api/master?action=meta');
+    const res = await fetchWithRetry('/api/master?action=meta');
     if (!res.ok) return null;
     const data = await res.json();
     if (!data || !data.row_count) return null;
@@ -39,8 +60,6 @@ export async function loadMasterMeta() {
 }
 
 // ── Training Sessions ─────────────────────────────────────────────────────────
-// Each enriched row is stored as one record in `training_sessions`
-
 export async function addSession(enrichedRows) {
   try {
     const records = enrichedRows.map(r => ({ session_id: r._sessionId || '', row_data: r }))
@@ -56,7 +75,7 @@ export async function addSession(enrichedRows) {
 
 export async function loadAllSessions() {
   try {
-    const res = await fetch('/api/sessions?action=all');
+    const res = await fetchWithRetry('/api/sessions?action=all');
     if (!res.ok) return [];
     const data = await res.json();
     return data;
@@ -65,7 +84,7 @@ export async function loadAllSessions() {
 
 export async function loadSessionsMeta() {
   try {
-    const res = await fetch('/api/sessions?action=meta');
+    const res = await fetchWithRetry('/api/sessions?action=meta');
     if (!res.ok) return null;
     const data = await res.json();
     if (!data || data.length === 0) return null;
@@ -99,7 +118,6 @@ export async function clearAllData() {
   await fetch('/api/sessions', { method: 'DELETE' });
 }
 
-// ── Backward-compat aliases (used by DashboardPage) ──────────────────────────
-
+// ── Backward-compat aliases ───────────────────────────────────────────────────
 export async function loadData() { return loadAllSessions() }
 export async function loadMeta() { return loadSessionsMeta() }
